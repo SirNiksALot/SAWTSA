@@ -9,14 +9,36 @@ python agent.py
 ## Working
 
 ```python
-@ctx.room.on("user_started_speaking")
-async def on_participant_connected(participant: rtc.RemoteParticipant):
-    if len(assistant.chat_ctx.messages) <= 2:
-        stream = assistant.llm.chat(chat_ctx=assistant.chat_ctx)
-        return await assistant.say(stream, allow_interruptions=False)
-    else:
-        stream = assistant.llm.chat(chat_ctx=assistant.chat_ctx)
-        return await assistant.say(stream, allow_interruptions=True)
+    flag=False
+
+    @assistant.on("user_speech_committed")
+    def on_user_speech_committed(msg: llm.ChatMessage):
+        nonlocal flag
+        messages = assistant.chat_ctx.messages
+        if len(messages)==3 and messages[-1].role=="user":
+            stream = assistant.llm.chat(chat_ctx=assistant.chat_ctx)
+            flag=True
+            return asyncio.create_task(assistant.say(stream,allow_interruptions=False))
+        else:
+            stream = assistant.llm.chat(chat_ctx=assistant.chat_ctx)
+            return asyncio.create_task(assistant.say(stream,allow_interruptions=True))
+        
+    
+    
+    @assistant.on("agent_speech_committed")
+    def on_agent_speech_committed(msg):
+        nonlocal flag
+        if flag:
+            messages=assistant.chat_ctx.messages
+            msgs_ignore=messages[:3]
+            msgs_ignore.append(messages[-1])
+            chat_ctx_new=ChatContext(messages=msgs_ignore)
+            stream = assistant.llm.chat(chat_ctx=chat_ctx_new)
+            flag=False
+            return asyncio.create_task(assistant.say(stream,allow_interruptions=True))
+        else:
+            stream = assistant.llm.chat(chat_ctx=assistant.chat_ctx)
+            return asyncio.create_task(assistant.say(stream,allow_interruptions=True))
 ```
 
 The agent listens for when a user starts speaking.
