@@ -1,7 +1,7 @@
 import asyncio
 from dotenv import load_dotenv
 from livekit.agents import AutoSubscribe, JobContext, WorkerOptions,cli,llm
-from livekit.agents.voice_assistant import VoiceAssistant
+from livekit.agents.pipeline import VoicePipelineAgent
 from livekit.plugins import openai , silero
 from livekit.agents.llm import ChatContext
 from livekit import rtc
@@ -27,19 +27,29 @@ async def entrypoint(ctx: JobContext):
     )
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
-    assistant =VoiceAssistant(
+    starting_message="Hey! Shall i start the explanation"
+
+    async def modify_context(assistant: VoicePipelineAgent, chat_ctx: llm.ChatContext):
+        nonlocal starting_message
+        if chat_ctx.messages[-2].content==starting_message:
+            stream=assistant.llm.chat(chat_ctx=assistant.chat_ctx)
+            await assistant.say(stream , allow_interruptions=False)
+        else:
+            stream=assistant.llm.chat(chat_ctx=assistant.chat_ctx)
+            await assistant.say(stream , allow_interruptions=True)
+
+    assistant =VoicePipelineAgent(
         llm=openai.LLM(),
         stt=openai.STT(),
         vad=silero.VAD.load(),
         tts=openai.TTS(),
         chat_ctx=initial_ctx,
-        allow_interruptions=False     
+        allow_interruptions=False,
+        before_llm_cb=modify_context     
     )
     assistant.start(ctx.room)
 
-    ignore_flag=False
-
-    @assistant.on("user_speech_committed")
+    """@assistant.on("user_speech_committed")
     def on_user_speech_committed(msg: llm.ChatMessage):
         nonlocal ignore_flag
         if ignore_flag:
@@ -53,21 +63,10 @@ async def entrypoint(ctx: JobContext):
             return asyncio.create_task(assistant.say(stream,allow_interruptions=True))
         else:
             stream = assistant.llm.chat(chat_ctx=assistant.chat_ctx)
-            return asyncio.create_task(assistant.say(stream,allow_interruptions=True))
+            return asyncio.create_task(assistant.say(stream,allow_interruptions=True))"""
         
-    
-    
-    @assistant.on("agent_speech_committed")
-    def on_agent_speech_committed(msg):
-        nonlocal ignore_flag
-        if len(assistant.chat_ctx.messages)==3 and assistant.chat_ctx.messages[-1].role=="user":
-            ignore_flag=True
-        
-
-    
-
     await asyncio.sleep(1)
-    await assistant.say("Hey! Shall i start the explanation",allow_interruptions=False)
+    await assistant.say(starting_message,allow_interruptions=False)
 
 if __name__=="__main__":
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
