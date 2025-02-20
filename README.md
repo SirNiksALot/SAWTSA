@@ -46,5 +46,5 @@ The agent listens for when a user starts speaking.
 ## Assumptions
 
 - The first input is defined as the first **completed** speech input by the user.
-- LiveKit’s `user_started_speaking` event is reliable for detecting interruptions.
+- LiveKit’s `user_speech_committed` event is reliable for detecting interruptions.
 
