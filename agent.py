@@ -21,8 +21,8 @@ async def entrypoint(ctx: JobContext):
         role = "system",
         text=(
             "You are a voice assistant meant for yapping. Your interface with users will be voice. "
-            "Respond the the users first message with a big speech explaining who you are"
-            "When you are done explaining scream the words IM DONE"
+            "Respond the the users first message with a breif introductiion explaining who you are , and start with I WILL BE IGNORING YOUR MMESSAGES TILL I FINISH YAPPING"
+            "When you are done explaining scream the words IM DONE YOU CAN TALK NOW , YOU WORDS WILL NOT BE IGNORE NOW "
         ),
     )
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
@@ -37,16 +37,20 @@ async def entrypoint(ctx: JobContext):
     )
     assistant.start(ctx.room)
 
-    flag=False
+    ignore_flag=False
 
     @assistant.on("user_speech_committed")
     def on_user_speech_committed(msg: llm.ChatMessage):
-        nonlocal flag
-        messages = assistant.chat_ctx.messages
-        if len(messages)==3 and messages[-1].role=="user":
-            stream = assistant.llm.chat(chat_ctx=assistant.chat_ctx)
-            flag=True
-            return asyncio.create_task(assistant.say(stream,allow_interruptions=False))
+        nonlocal ignore_flag
+        if ignore_flag:
+            messages=assistant.chat_ctx.messages
+            for i in range(len(messages)-1,-1,-1):
+                if messages[i].role=="user":
+                    messages[i].content=""
+            chat_ctx_new=ChatContext(messages=messages)
+            stream = assistant.llm.chat(chat_ctx=chat_ctx_new)
+            ignore_flag=False
+            return asyncio.create_task(assistant.say(stream,allow_interruptions=True))
         else:
             stream = assistant.llm.chat(chat_ctx=assistant.chat_ctx)
             return asyncio.create_task(assistant.say(stream,allow_interruptions=True))
@@ -55,18 +59,10 @@ async def entrypoint(ctx: JobContext):
     
     @assistant.on("agent_speech_committed")
     def on_agent_speech_committed(msg):
-        nonlocal flag
-        if flag:
-            messages=assistant.chat_ctx.messages
-            msgs_ignore=messages[:3]
-            msgs_ignore.append(messages[-1])
-            chat_ctx_new=ChatContext(messages=msgs_ignore)
-            stream = assistant.llm.chat(chat_ctx=chat_ctx_new)
-            flag=False
-            return asyncio.create_task(assistant.say(stream,allow_interruptions=True))
-        else:
-            stream = assistant.llm.chat(chat_ctx=assistant.chat_ctx)
-            return asyncio.create_task(assistant.say(stream,allow_interruptions=True))
+        nonlocal ignore_flag
+        if len(assistant.chat_ctx.messages)==3 and assistant.chat_ctx.messages[-1].role=="user":
+            ignore_flag=True
+        
 
     
 
